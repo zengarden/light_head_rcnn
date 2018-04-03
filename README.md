@@ -26,12 +26,12 @@ light_head_rcnn/
 3. We share our training logs in [GoogleDrive](https://drive.google.com/open?id=1-Mqj385d_1t4wcmhl25TZO1g-uw5X-xK) output folder, which contains dump models, training loss and speed of each steps. (experiments are done on 8 titan xp, and 2batches/per_gpu.)
 4. Because the limitation of the time, extra experiments are comming soon.
 
-|         Model Name                                          |<sub>mAP@all</sub>|<sub>mAP@0.5</sub>|<sub>mAP@0.75</sub>|<sub>mAP@S</sub>|<sub>mAP@M</sub>|<sub>mAP@L</sub>                                           | 
-|-------------------------------------------------------------|------------------|------------------|---------          |-------         |-------         |-------         |-----------------------------------------------------------------           |
-|<sub>R-FCN, ResNet-v1-101 </br> our reproduce baseline</sub>      | 35.5             | 54.3             |   33.8            | 12.8           | 34.9           | 46.1           |<sub> </sub>    |
-|<sub>Light-Head R-CNN </br> ResNet-v1-101</sub>                   | 38.2             | 60.9             |   41.0            | 20.9           | 42.2           | 52.8           |<sub>        </sub>    |
-|<sub>Light-Head,ResNet-v1-101 </br> +align pooling </sub>        | 39.3             | 61.0             |   42.4            | 22.2           | 43.8           | 53.2           |<sub> </sub>|
-|<sub>Light-Head,ResNet-v1-101 </br> +align pooling  + nms0.5</sub>| 40.0             | 62.1             |   42.9            | 22.5           | 44.6           | 54.0           |<sub> </sub>| 
+|         Model Name                                               |<sub>mAP@all</sub>|<sub>mAP@0.5</sub>|<sub>mAP@0.75</sub>|<sub>mAP@S</sub>|<sub>mAP@M</sub>|<sub>mAP@L</sub>| 
+|-------------------------------------------------------------     |------------------|------------------|---------          |-------         |-------         |-------         |   
+|<sub>R-FCN, ResNet-v1-101 </br> our reproduce baseline</sub>      | 35.5             | 54.3             |   33.8            | 12.8           | 34.9           | 46.1           |   
+|<sub>Light-Head R-CNN </br> ResNet-v1-101</sub>                   | 38.2             | 60.9             |   41.0            | 20.9           | 42.2           | 52.8           |   
+|<sub>Light-Head,ResNet-v1-101 </br> +align pooling </sub>         | 39.3             | 61.0             |   42.4            | 22.2           | 43.8           | 53.2           |   
+|<sub>Light-Head,ResNet-v1-101 </br> +align pooling  + nms0.5</sub>| 40.0             | 62.1             |   42.9            | 22.5           | 44.6           | 54.0           |  
 
 Experiments path related to model:
 
