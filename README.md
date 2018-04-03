@@ -26,12 +26,12 @@ light_head_rcnn/
 3. We share our training logs in [GoogleDrive](https://drive.google.com/open?id=1-Mqj385d_1t4wcmhl25TZO1g-uw5X-xK) output folder, which contains dump models, training loss and speed of each steps. (experiments are done on 8 titan xp, and 2batches/per_gpu.)
 4. Because the limitation of the time, extra experiments are comming soon.
 
-|                                                           |mAP@all|mAP@0.5 | mAP@0.75| mAP@S | mAP@M | mAP@L |  experiments path                                               | 
-|-----------------------------------------------------------|-------|--------|---------|-------|-------|-------|-----------------------------------------------------------------|
-|<sub>R-FCN, ResNet-v1-101, our reproduce baseline</sub>    | 35.5 | 54.3    |   33.8  | 12.8  | 34.9  | 46.1  |experiments/lizeming/rfcn_reproduce.ori_res101.coco.baseline     |
-|<sub>Light-Head R-CNN, ResNet-v1-101</sub>                 | 38.2 | 60.9    |   41.0  | 20.9  | 42.2  | 52.8  |experiments/lizeming/light_head_rcnn.ori_res101.coco             |
-|<sub>Light-Head, ResNet-v1-101, +align pooling </sub>      | 39.3 | 61.0    |   42.4  | 22.2  | 43.8  | 53.2  |experiments/lizeming/light_head_rcnn.ori_res101.coco.ps_roialign |
-|<sub>Light-Head, ResNet-v1-101, +align pooling + nms0.5    | 40.0 | 62.1    |   42.9  | 22.5  | 44.6  | 54.0  |experiments/lizeming/light_head_rcnn.ori_res101.coco.ps_roialign | 
+|                                                             |<sub>mAP@all</sub>|<sub>mAP@0.5</sub>|<sub>mAP@0.75</sub>|<sub>mAP@S</sub>|<sub>mAP@M</sub>|<sub>mAP@L</sub>|<sub>experiments path</sub>                                                 | 
+|-------------------------------------------------------------|------------------|------------------|---------          |-------         |-------         |-------         |-----------------------------------------------------------------           |
+|<sub>R-FCN, ResNet-v1-101, our reproduce baseline</sub>      | 35.5             | 54.3             |   33.8            | 12.8           | 34.9           | 46.1           |<sub>experiments/lizeming/rfcn_reproduce.ori_res101.coco.baseline </sub>    |
+|<sub>Light-Head R-CNN, ResNet-v1-101</sub>                   | 38.2             | 60.9             |   41.0            | 20.9           | 42.2           | 52.8           |<sub>experiments/lizeming/light_head_rcnn.ori_res101.coco         </sub>    |
+|<sub>Light-Head, ResNet-v1-101, +align pooling </sub>        | 39.3             | 61.0             |   42.4            | 22.2           | 43.8           | 53.2           |<sub>experiments/lizeming/light_head_rcnn.ori_res101.coco.ps_roialign </sub>|
+|<sub>Light-Head, ResNet-v1-101, +align pooling + nms0.5</sub>| 40.0             | 62.1             |   42.9            | 22.5           | 44.6           | 54.0           |<sub>experiments/lizeming/light_head_rcnn.ori_res101.coco.ps_roialign </sub>| 
 
 ## Requirements
 1. tensorflow-gpu==1.5.0  (We only test on tensorflow 1.5.0, erly tensorflow is not supported because of our gpu nms implementation)
