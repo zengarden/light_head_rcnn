@@ -97,6 +97,7 @@ We transfer instances_xxx.json to odformat(object detection format), each line i
 
 1. Using `-d` to assign gpu_id for testing. (e.g.  `-d 0,1,2,3`   or `-d 0-3` )
 2. Using `-s` to visualize the results. 
+3. Using '-se' to specify start_epoch for testing.
 
 We share our experiments output(logs) folder in [GoogleDrive](https://drive.google.com/open?id=1-Mqj385d_1t4wcmhl25TZO1g-uw5X-xK). Download it and place it to `${lighthead_ROOT}`, then test our release model.
 
@@ -104,7 +105,7 @@ e.g.
 
 ```
 cd experiments/lizeming/light_head_rcnn.ori_res101.coco.ps_roialign
-python3 test.py -d 0-7
+python3 test.py -d 0-7 -se 26
 ``` 
 
 ### Traning
