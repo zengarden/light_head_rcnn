@@ -23,7 +23,7 @@ light_head_rcnn/
 ## Main Results
 1. We train on COCO trainval which includes `80k` training and `35k` validation images. Test on minival which is a `5k` subset in validation datasets. Noticing test-dev should be little higher than minival.
 2. We provide some crutial ablation experiments details, and it is easy to diff the difference.
-3. We share our training logs in [GoogleDrive](https://drive.google.com/open?id=1-Mqj385d_1t4wcmhl25TZO1g-uw5X-xK) output folder, which contains dump models, training loss and speed of each steps. (experiments are done on 8 titan xp, and 2batches/per_gpu.)
+3. We share our training logs in [GoogleDrive](https://drive.google.com/open?id=1-Mqj385d_1t4wcmhl25TZO1g-uw5X-xK) output folder, which contains dump models, training loss and speed of each steps. (experiments are done on 8 titan xp, and 2batches/per_gpu. Training should be within one day.)
 4. Because the limitation of the time, extra experiments are comming soon.
 
 |         Model Name                                               |<sub>mAP@all</sub>|<sub>mAP@0.5</sub>|<sub>mAP@0.75</sub>|<sub>mAP@S</sub>|<sub>mAP@M</sub>|<sub>mAP@L</sub>| 
