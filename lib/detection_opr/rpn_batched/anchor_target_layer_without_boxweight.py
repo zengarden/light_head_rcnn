@@ -12,7 +12,7 @@ import os
 from config import cfg
 import numpy as np
 import numpy.random as npr
-from utils.cython_bbox import bbox_overlaps
+from utils.py_faster_rcnn_utils.cython_bbox import bbox_overlaps
 from detection_opr.utils.bbox_transform import bbox_transform
 
 
