@@ -1,6 +1,8 @@
 /*
-@author: zeming li
-@contact: zengarden2009@gmail.com
+@author: Kai Jia
+@contact: jiakai@megvii.com
+This is the nms used in Face++(Megvii) MegBrain platform, 
+which is adopted juring light-head experiments. 
 */
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
