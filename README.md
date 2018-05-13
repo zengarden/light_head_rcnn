@@ -8,7 +8,7 @@ We release code for [Light-Head R-CNN](https://arxiv.org/abs/1711.07264).
 
 This is my best practice for my research. 
 
-This repo is oranized as follows:
+This repo is organized as follows:
 
 ```
 light_head_rcnn/
@@ -43,7 +43,7 @@ experiments/lizeming/light_head_rcnn.ori_res101.coco.ps_roialign
 ```
 
 ## Requirements
-1. tensorflow-gpu==1.5.0  (We only test on tensorflow 1.5.0, erly tensorflow is not supported because of our gpu nms implementation)
+1. tensorflow-gpu==1.5.0  (We only test on tensorflow 1.5.0, early tensorflow is not supported because of our gpu nms implementation)
 2. python3. We recommend using Anaconda as it already includes many common packages. (python2 is not tested)
 3. Python packages might missing. pls fix it according to the error message.
 
@@ -62,7 +62,7 @@ cd ${lighthead_ROOT}/lib;
 bash make.sh
 ``` 
 
-Make sure all of your compiling is succeeful. It may arise some errors, it is useful to find some common compile errors in [FAQ](##FAQ)
+Make sure all of your compiling is successful. It may arise some errors, it is useful to find some common compile errors in [FAQ](##FAQ)
 
 3. Create log dump directory, data directory. 
 
@@ -108,7 +108,7 @@ cd experiments/lizeming/light_head_rcnn.ori_res101.coco.ps_roialign
 python3 test.py -d 0-7 -se 26
 ``` 
 
-### Traning
+### Training
 
 We provide common used train.py in tools, which can be linked to experiments folder.
 
@@ -125,7 +125,7 @@ python3 train.py -d 0-7
 This repo is designed be `fast` and `simple` for research. Such as: we build fast dataprovider for training, rewrite fast_nms. However there are still some can be improved: anchor_target and proposal_target layer are `tf.py_func`, which means it will run on cpu. 
 
 ## Disclaimer
-This is a implementation for [Light-Head R-CNN](https://arxiv.org/abs/1711.07264), it is worth nothing that:
+This is an implementation for [Light-Head R-CNN](https://arxiv.org/abs/1711.07264), it is worth noting that:
 
 * The original implementation is based on our internal Platform used in Megvii. There are slight differences in the final accuracy and running time due to the plenty details in platform switch.
 * The code is tested on a server with 8 Pascal Titian XP gpu, 188.00 GB memory, and 40 core cpu.
