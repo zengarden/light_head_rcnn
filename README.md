@@ -116,7 +116,7 @@ e.g.
 ```
 cd experiments/lizeming/light_head_rcnn.ori_res101.coco.ps_roialign
 python3 config.py -tool
-cp tool/train.py .
+cp tools/train.py .
 python3 train.py -d 0-7
 ``` 
 
