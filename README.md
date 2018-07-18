@@ -122,13 +122,14 @@ python3 train.py -d 0-7
 
 ## Features 
  
-This repo is designed be `fast` and `simple` for research. Such as: we build fast dataprovider for training, rewrite fast_nms. However there are still some can be improved: anchor_target and proposal_target layer are `tf.py_func`, which means it will run on cpu. 
+This repo is designed be `fast` and `simple` for research. There are still some can be improved: anchor_target and proposal_target layer are `tf.py_func`, which means it will run on cpu. 
 
 ## Disclaimer
 This is an implementation for [Light-Head R-CNN](https://arxiv.org/abs/1711.07264), it is worth noting that:
 
 * The original implementation is based on our internal Platform used in Megvii. There are slight differences in the final accuracy and running time due to the plenty details in platform switch.
 * The code is tested on a server with 8 Pascal Titian XP gpu, 188.00 GB memory, and 40 core cpu.
+* We rewrite a faster nms in our inner platform, while hear we use tf.nms instead. 
 
 
 ## Citing Light-Head R-CNN

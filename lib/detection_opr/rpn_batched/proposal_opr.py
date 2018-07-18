@@ -6,7 +6,6 @@
 
 from IPython import embed
 from config import cfg
-from lib_kernel.lib_fast_nms import nms_op
 from detection_opr.box_utils.bbox_transform_opr import bbox_transform_inv, \
     clip_boxes
 
@@ -90,6 +89,7 @@ def proposal_opr(
             keep = tf.image.non_max_suppression(
                 tf_proposals, cur_scores, post_nms_topN, nms_thresh)
         else:
+            from lib_kernel.lib_fast_nms import nms_op
             keep, keep_num, mask, _ = nms_op.nms(
                 cur_proposals, nms_thresh, post_nms_topN)
             keep = keep[:keep_num[0]]

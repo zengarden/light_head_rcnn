@@ -160,7 +160,7 @@ class Network(object):
 
             rois, roi_scores = proposal_opr(
                 rpn_cls_prob, rpn_bbox_pred, im_info, mode, cfg.stride,
-                anchors, num_anchors, is_tfchannel=True, is_tfnms=False)
+                anchors, num_anchors, is_tfchannel=True, is_tfnms=True)
 
             if is_training:
                 with tf.variable_scope('anchor') as scope:
