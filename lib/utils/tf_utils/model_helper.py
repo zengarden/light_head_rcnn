@@ -12,6 +12,8 @@ def get_variables_in_checkpoint_file(file_name):
     try:
         reader = pywrap_tensorflow.NewCheckpointReader(file_name)
         var_to_shape_map = reader.get_variable_to_shape_map()
+        '''得到的当然是个字典,键值分别为变量名及其对应的值, e.g.:
+        var_to_shape_map['resnet_v1_101/block1/unit_3/bottleneck_v1/conv3/weights'] = [1,1,64,256]'''
         return var_to_shape_map
     except Exception as e:  # pylint: disable=broad-except
         print(str(e))

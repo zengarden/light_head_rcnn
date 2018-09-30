@@ -21,8 +21,8 @@ class MultiStageLR(BaseLR):
 
     def get_lr(self, epoch):
         for it_lr in self._lr_stagess:
-            if epoch < it_lr[0]:
-                return it_lr[1]
+            if epoch < it_lr[0]: # epoch
+                return it_lr[1] # 在训练到訪epoch之前的学习率
 
 
 class LinearIncreaseLR(BaseLR):

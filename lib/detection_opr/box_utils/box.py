@@ -311,6 +311,7 @@ class DetBoxGT(BoxBase):
             color = (255, 255, 0) # cyan for matched gt
         return color
 
+
 class BoxUtil:
     """
     :class: Implements some common utils for boxes parsing, transformation

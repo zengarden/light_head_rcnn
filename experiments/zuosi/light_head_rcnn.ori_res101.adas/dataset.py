@@ -5,15 +5,15 @@ import numpy as np
 import cv2
 import time
 import json
-import os
-
+import pdb 
 from IPython import embed
 from detection_opr.box_utils.box import BoxUtil
 
 
 def get_hw_by_short_size(im_height, im_width, short_size, max_size):
-    im_size_min = np.min([im_height, im_width])
-    im_size_max = np.max([im_height, im_width])
+    im_size_min = np.min([im_height, im_width]) #im_xx这里是图片的宽/高
+    im_size_max = np.max([im_height, im_width]) 
+    
     scale = (short_size + 0.0) / im_size_min
     if scale * im_size_max > max_size:
         scale = (max_size + 0.0) / im_size_max
@@ -98,8 +98,7 @@ def get_data_for_singlegpu(batch_lines):
         hw_stat[i, :] = record['height'], record['width']
 
     if config.batch_image_preprocess == 'pad':
-        # 找出这一个batch里面最大的width和height
-        batch_image_height = np.max(hw_stat[:, 0])
+        batch_image_height = np.max(hw_stat[:, 0]) # 一个batch里面最大height值
         batch_image_width = np.max(hw_stat[:, 1])
     else:
         from IPython import embed;
@@ -109,14 +108,13 @@ def get_data_for_singlegpu(batch_lines):
     # from IPython import embed;
     # embed()
     is_batch_ok = True
-    filter_box_size = config.batch_filter_box_size
+    filter_box_size = config.batch_filter_box_size # defualt 0
     batch_resized_height, batch_resized_width = get_hw_by_short_size(
         batch_image_height, batch_image_width, short_size, max_size)
 
     batch_images = np.zeros(
         (batch_per_gpu, batch_resized_height, batch_resized_width, 3),
         dtype=np.float32)
-    # nr_box_dim是说一个box的维度,4个坐标+1个类别
     batch_gts = np.zeros(
         (batch_per_gpu, config.max_boxes_of_image, config.nr_box_dim),
         dtype=np.float32)
@@ -126,21 +124,10 @@ def get_data_for_singlegpu(batch_lines):
     for i in range(batch_per_gpu):
         record = batch_records[i]
         # process the images
-        # train_root_folder, e.g. /xx/data/MSCOCO
         image_path = config.train_root_folder + record['fpath']
-
-        if not os.path.exists(image_path):
-            raise Exception('{} not exist'.format(image_path))
-
         img = cv2.imread(image_path, cv2.IMREAD_COLOR)
-        if img is None:
-            raise Exception('cv2.imread {} None'.format(image_path))
-
-        '''
-        # ca,要你这种写法要是文件不存在,陷入死循环根本就很难发现啊!    
         while img is None:
             img = cv2.imread(image_path, cv2.IMREAD_COLOR)
-        '''
 
         gtboxes = record['gtboxes']
         gt_boxes = BoxUtil.parse_gt_boxes(gtboxes)
@@ -182,7 +169,6 @@ def get_data_for_singlegpu(batch_lines):
 
         nr_gtboxes = resized_gt.shape[0]
 
-        # 意思是有一半的概率翻转
         if np.random.randint(2) == 1:
             resized_image, resized_gt = flip_image_and_boxes(
                 resized_image, resized_gt)
@@ -232,8 +218,8 @@ def train_dataset(seed=config.seed_dataprovider):
 
 
 def val_dataset():
-    root = config.eval_root_folder
-    source = config.eval_source
+    root = config.eval_root_folder # e.g. data/ADAS
+    source = config.eval_source # e.g. data/ADAS/odformat/val2017.odgt
     with open(source) as f:
         files = f.readlines()
     total_files = len(files)

@@ -18,6 +18,8 @@ import zmq
 import atexit
 from itertools import cycle
 
+import pdb 
+
 def get_rng(obj=None):
     """
     Get a good RNG seeded with time, pid and the object.
@@ -72,20 +74,22 @@ class DataFlowReentrantGuard(object):
 
 class DataFromList(object):
     def __init__(self, datalist, is_train=True, shuffle=True):
-        self.rng = get_rng()
+        self.rng = get_rng() # 获取随机种子?
         self._datalist = datalist
         self._shuffle = shuffle
         self._is_train = is_train
+
     def get_data(self):
         if self._is_train:
             while True:
+                #self._datalist里面的数据是个啥样子的呢?
                 nr_data = len(self._datalist)
                 idxs = np.arange(len(self._datalist))
                 if self._shuffle:
                     self.rng.shuffle(idxs)
 
                 cur_id = 0
-                while cur_id + config.train_batch_per_gpu <= nr_data:
+                while cur_id + config.train_batch_per_gpu <= nr_data: 
                     ret_data = []
                     for i in range(config.train_batch_per_gpu):
                         ret_data.append(self._datalist[idxs[cur_id + i]])
@@ -181,19 +185,20 @@ class MultiProcessMapDataZMQ(_ParallelMapData):
            is guranteed to produce the exact set which `df.get_data()`
            produces. Although the order of data still isn't preserved.
     """
-    class _Worker(mp.Process):
+    class _Worker(mp.Process): # multiprocessing(多进程)
         def __init__(self, identity, map_func, pipename, hwm):
             super(MultiProcessMapDataZMQ._Worker, self).__init__()
-            self.identity = identity
+            self.identity = identity # e.g. 0,1,2,...15
             self.map_func = map_func
-            self.pipename = pipename
+            self.pipename = pipename # e.g. ipc://@dataflow-map-pipe-cc5ea8ce
             self.hwm = hwm
 
         def run(self):
+            # 这些worker的pipeline是唯一的,因为它们共同连接都訪pipeline,但是worker有自己的身份证
             print('Start data provider {}-{}'.format(self.pipename, self.identity.decode('utf-8')))
             ctx = zmq.Context()
             socket = ctx.socket(zmq.DEALER)
-            socket.setsockopt(zmq.IDENTITY, self.identity)
+            socket.setsockopt(zmq.IDENTITY, self.identity) # 设置好自己的身份证
             socket.set_hwm(self.hwm)
             socket.connect(self.pipename)
 
@@ -217,7 +222,7 @@ class MultiProcessMapDataZMQ(_ParallelMapData):
             strict (bool): use "strict mode", see notes above.
         """
         _ParallelMapData.__init__(self, ds, buffer_size)
-        self.nr_proc = nr_proc
+        self.nr_proc = nr_proc # 配置默认进程数是16
         self.map_func = map_func
         self._strict = strict
         self._procs = []
@@ -232,6 +237,9 @@ class MultiProcessMapDataZMQ(_ParallelMapData):
         self.socket.set_hwm(self._buffer_size * 2)
         pipename = "ipc://@{}-pipe-{}".format('dataflow-map', str(uuid.uuid1())[:8])
 
+        """
+        ZMQ采用的这个router,dealer模式还得再研究研究
+        """
         try:
             self.socket.bind(pipename)
         except zmq.ZMQError:
@@ -241,18 +249,20 @@ class MultiProcessMapDataZMQ(_ParallelMapData):
             raise
 
         self._proc_ids = [u'{}'.format(k).encode('utf-8') for k in range(self.nr_proc)]
+        # 200 * 2 // 16,'//'表示取整
         worker_hwm = int(self._buffer_size * 2 // self.nr_proc)
         self._procs = [MultiProcessMapDataZMQ._Worker(
             self._proc_ids[k], self.map_func, pipename, worker_hwm)
             for k in range(self.nr_proc)]
 
-        self.ds.reset_state()
-        self._iter = self.ds.get_data()
-        self._iter_worker = cycle(iter(self._proc_ids))
+        self.ds.reset_state() # 看了源码,貌似啥都没干
+        # 经过验证是能从self._iter通过next(..)的方式获取到数据的
+        self._iter = self.ds.get_data() # 迭代器高手,貌似一次迭代是取出一个minibatch的数据
+        self._iter_worker = cycle(iter(self._proc_ids)) # 能重复序列元素
 
         for p in self._procs:
             p.deamon = True
-            p.start()
+            p.start() # 开始run起来
         self._fill_buffer()     # pre-fill the bufer
 
     def reset_state(self):
@@ -267,7 +277,8 @@ class MultiProcessMapDataZMQ(_ParallelMapData):
 
     def _send(self, dp):
         # round-robin assignment
-        worker = next(self._iter_worker)
+        # worker拿到的就是子进程的身份证
+        worker = next(self._iter_worker) # 因为是重复序列,所以worker总能一直next下去
         msg = [worker, dumps(dp)]
         self.socket.send_multipart(msg, copy=False)
 
