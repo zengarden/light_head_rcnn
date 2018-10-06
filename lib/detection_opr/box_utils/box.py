@@ -167,7 +167,8 @@ class BoxBase(object):
         color = self._getDrawColor()
         line = self._getDrawLine(bold)
         if "score" in self.__dict__:
-            text = "{}: {:.4f}".format(self.tag, self.score)
+            #text = "{}: {:.4f}".format(self.tag, self.score)
+            text = "{}: {:.2f}".format(self.tag, self.score)
         else:
             text = str(self.tag)
 

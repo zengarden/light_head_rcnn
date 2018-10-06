@@ -30,15 +30,17 @@ import pdb
 import warnings
 warnings.filterwarnings("ignore")
 
-def snapshot(sess, saver, global_step):
+def snapshot(sess, saver, epoch, iter, global_step):
     # 这是要一个epoch才保存一次的节奏啦
-    filename = 'light-head.ckpt'
+    filename = 'epoch_{:d}_step_{:d}.ckpt'.format(epoch, iter)
     # e.g. output/zuosi/light_head_rcnn.ori_res101.coco
     if not os.path.exists(cfg.ckpt_dir):
         os.makedirs(cfg.ckpt_dir)
 
     filepath = os.path.join(cfg.ckpt_dir, filename)
     saver.save(sess, filepath, global_step=global_step)
+
+    print('Wrote checkpoint: {}'.format(filename))
 
 
 def get_data_flow():
@@ -191,11 +193,9 @@ def train(args):
 
         variables = tf.global_variables() # 获取程序中的变量,返回的是变量的一个列表
         var_keep_dic = get_variables_in_checkpoint_file(cfg.weight) # 从预训练文件中获取参数
-        #var_keep_dic.pop('global_step') #把'global_step'弹出来
+        var_keep_dic.pop('global_step') #把'global_step'弹出来
 
-        #tf.global_xx返回一个初始化所有全局变量(GraphKeys.VARIABLE)的操作(op)
         sess.run(tf.global_variables_initializer())
-        #tf.local_xx返回一个初始化所有局部变量(GraphKeys.LOCAL_VARIABLE)的操作(op)
         sess.run(tf.local_variables_initializer())
 
         sess.run(update_lr_op, {lr_placeholder: cfg.get_lr(0) * num_gpu})
@@ -217,15 +217,15 @@ def train(args):
 
         restore_from_ckpt = False 
         if args.resume:
-            checkpoint = 'light-head.ckpt-{:d}'.format(args.checkstep)
+            checkpoint = 'epoch_{:d}_step_{:d}.ckpt'.format(args.checkepoch, args.checkstep)
             print('restore from ckpt: {}'.format(os.path.join(cfg.ckpt_dir, checkpoint)))
             restorer.restore(sess, os.path.join(cfg.ckpt_dir, checkpoint))
-            start_step = args.checkstep
+            start_epoch, start_step = args.checkepoch, args.checkstep
             restore_from_ckpt = True
         else:
             print('restore from pretrained file: {}'.format(cfg.weight))
             restorer.restore(sess, cfg.weight)
-            start_step = 0
+            start_epoch = start_step = 0
 
         train_collection = net.get_train_collection()
         sess2run = []
@@ -251,12 +251,11 @@ def train(args):
             sess.run([put_op_list], feed_dict=feed_dict)
 
         print('##### start train #####')
-        start_step = 0
-        steps_per_epoch = cfg.nr_image_per_epoch // (num_gpu * cfg.train_batch_per_gpu) + 1
-        if not restore_from_ckpt:
-            if cfg.warm_iter > 0:
-                '''为啥有[bottom_lr,up_lr]这个区间?这里的学习率调整更平滑,
-                注意还有一个iter_delta_lr是每一轮迭代的学习率调整步长.'''
+        iters_per_epoch = cfg.nr_image_per_epoch // (num_gpu * cfg.train_batch_per_gpu) + 1
+        for epoch in range(start_epoch, cfg.max_epoch):
+            if not restore_from_ckpt and cfg.warm_iter > 0:
+                '''为啥有[bottom_lr,up_lr]这个区间?这里的学习率调整更平滑,注意还有一个iter_delta_lr是
+                每一轮迭代的学习率调整步长.'''
                 up_lr = cfg.get_lr(0) * num_gpu
                 bottom_lr = up_lr * cfg.warm_fractor # up_lr * (1.0/3.0)
                 iter_delta_lr = 1.0 * (up_lr - bottom_lr) / cfg.warm_iter
@@ -274,8 +273,7 @@ def train(args):
                             feed_dict[inputs[it_idx]] = blobs[it_inputs_name]
                     sess_ret = sess.run(sess2run, feed_dict=feed_dict)
 
-                    if iter > 0 and iter % 20 == 0:
-                        epoch = int(iter/steps_per_epoch)
+                    if iter > 0 and iter % 100 == 0:
                         print_str = 'epoch %d, iter %d/%d, ' % (epoch, iter, cfg.warm_iter)
                         # train_collection.keys => ['rpn_loss _cls','rpn_loss_box','loss_cls','loss_box','tot_losses']
                         for idx_key, iter_key in enumerate(train_collection.keys()):
@@ -284,53 +282,51 @@ def train(args):
                         print_str += 'lr: %.4f, speed: %.3fs/iter' % (cur_lr, timer.average_time)
                         print(print_str)
                 # update start_step
-                start_step = cfg.warm_iter
-        else:
-            start_step = sess.run(global_step) + 1 
+                start_step = cfg.warm_iter + 1
 
-     
-        '''nr_image_per_epoch这个视数据集不同而不同,像coco2014这个数就是80k的样子,
-        每个cpu装入train_batch_per_gpu张图片,总共num_gpu个gpu,以此来计算需要多
-        少次迭代, +1是因为range的原因.为了更新学习率,lr_placeholder是前面定义的一个占位符,
-        通过这种方式在运动中更新学习率,在不同的epoch阶段要适当调整学习率嘛,嘿嘿'''
-        epoch = int(start_step/steps_per_epoch)
-        cur_lr = cfg.get_lr(epoch) * num_gpu
-        sess.run(update_lr_op, {lr_placeholder: cur_lr})
+            '''nr_image_per_epoch这个视数据集不同而不同,像coco2014这个数就是80k的样子,
+            每个cpu装入train_batch_per_gpu张图片,总共num_gpu个gpu,以此来计算需要多
+            少次迭代, +1是因为range的原因.为了更新学习率,lr_placeholder是前面定义的一个占位符,
+            通过这种方式在运动中更新学习率,在不同的epoch阶段要适当调整学习率嘛,嘿嘿'''
+            cur_lr = cfg.get_lr(epoch) * num_gpu
+            sess.run(update_lr_op, {lr_placeholder: cur_lr})
 
-        loss_temp = 0.0
-        for step in range(start_step, args.max_steps):
-            timer.tic()
-            feed_dict = {}
-            blobs_list = prefetch_data_layer.forward() # 数据是通过这个prefetch_data_layer来?
-            for i, inputs in enumerate(inputs_list):
-                # blobs = next(data_iter)
-                blobs = blobs_list[i]
-                for it_idx, it_inputs_name in enumerate(inputs_names):
-                    feed_dict[inputs[it_idx]] = blobs[it_inputs_name]
+            loss_temp = 0.0
 
-            sess_ret = sess.run(sess2run, feed_dict=feed_dict)
-            timer.toc()
+            if epoch > start_epoch:
+                start_step = 0
 
-            #因为'tot_losses'正好是最后一项,这里取巧才这么用,不规范
-            loss_temp += sess_ret[-1]
-           
-            if step % cfg.disp_interval == 0 and step != start_step:
-                epoch = int(step/steps_per_epoch)
-                print_str = '[epoch %d][iter %d/%d][gs %d], ' % \
-                    (epoch, step % steps_per_epoch, steps_per_epoch, step)
-                for idx_key, iter_key in enumerate(train_collection.keys()):
-                    print_str += iter_key + ': %.4f, ' % sess_ret[idx_key + 2]
+            for iter in range(start_step, iters_per_epoch):
+                timer.tic()
+                feed_dict = {}
+                blobs_list = prefetch_data_layer.forward() # 数据是通过这个prefetch_data_layer来?
+                for i, inputs in enumerate(inputs_list):
+                    # blobs = next(data_iter)
+                    blobs = blobs_list[i]
+                    for it_idx, it_inputs_name in enumerate(inputs_names):
+                        feed_dict[inputs[it_idx]] = blobs[it_inputs_name]
 
-                print_str += 'tot_losses_mean: %.4f, ' % (loss_temp/cfg.disp_interval)
-                print_str += 'lr: %.4f, speed: %.3fs/iter' % (cur_lr, timer.average_time)
-                print(print_str)
+                sess_ret = sess.run(sess2run, feed_dict=feed_dict)
+                timer.toc()
 
-                loss_temp = 0.0
-            if step % cfg.snapshot_interval == 0:
-                print('write checkpoint, [epoch %d][gs %d]' % (epoch, step))
-                snapshot(sess, saver, global_step)
+                #因为'tot_losses'正好是最后一项,这里取巧才这么用,不规范
+                loss_temp += sess_ret[-1]
+                
+                gs = sess.run(global_step)
+                if gs % cfg.disp_interval == 0:
+                    print_str = 'epoch %d, iter %d/%d, ' % (epoch, iter, iters_per_epoch)
+                    for idx_key, iter_key in enumerate(train_collection.keys()):
+                        print_str += iter_key + ': %.4f, ' % sess_ret[idx_key + 2]
 
-        snapshot(sess, saver, global_step)
+                    print_str += 'tot_losses_mean: %.4f, ' % (loss_temp/cfg.disp_interval)
+                    print_str += 'lr: %.4f, speed: %.3fs/iter' % (cur_lr, timer.average_time)
+                    print(print_str)
+
+                    loss_temp = 0.0
+                if gs % cfg.snapshot_interval == 0:
+                    snapshot(sess, saver, epoch, iter, global_step)
+
+            snapshot(sess, saver, epoch, iter, global_step)
         coord.request_stop() # 跑完了,请求停止
         coord.join(queue_runner) # 等待所有线程终止
 
@@ -342,9 +338,10 @@ if __name__ == '__main__':
     parser.add_argument(
         '-d', '--devices', default='0', type=str, help='device for training')
     parser.add_argument(
-        '-s', '--checkstep', dest='checkstep', type=int, help='checkstep to load model', default=0)
+        '-e', '--checkepoch', dest='checkepoch', type=int, help='checkepoch to load model', default=0)
     parser.add_argument(
-        '--max_steps', dest='max_steps', type=int, help='max train steps', default=1000000)
+        '-s', '--checkstep', dest='checkstep', type=int, help='checkstep to load model', default=0)
+
     args = parser.parse_args()
     
     args.devices = misc.parse_devices(args.devices)

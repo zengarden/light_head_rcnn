@@ -129,7 +129,7 @@ class Config:
 
     from utils.tf_utils import lr_policy
     max_epoch = 30
-    warm_iter = 100 #预热,默认500次
+    warm_iter = 500 #预热,默认500次
     warm_fractor = 1.0 / 3.0
     '''
     multi_stage_lr_policy = lr_policy.MultiStageLR(
@@ -142,8 +142,8 @@ class Config:
         return self.multi_stage_lr_policy.get_lr(epoch)
 
     # add by zuosi
-    disp_interval = 500 #控制显示步长
-    snapshot_interval = 500 #快照步长
+    disp_interval = 1000 #控制显示步长
+    snapshot_interval = 2000 #快照步长
     # -----------------------------traditional rcnn config --------------------#
     TRAIN = edict()
 
