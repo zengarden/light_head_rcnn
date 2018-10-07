@@ -70,7 +70,7 @@ def adasval(cfg):
 	for i, cls in enumerate(datadb.class_names):
 		if cls == '__background__':
 			continue
-		filename = os.path.join(cfg.eval_dir, cfg.test_save_type + '_' + cls + '.txt')
+		filename = os.path.join(cfg.eval_dir, 'light-head_' + cfg.test_save_type + '_' + cls + '.txt')
 		rec, prec, ap = eval(
 			cfg.eval_root_folder, filename, cfg.eval_source, cls, ovthresh=0.5)
 		aps += [ap]

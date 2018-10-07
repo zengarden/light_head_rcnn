@@ -330,7 +330,6 @@ def train(args):
                 print('write checkpoint, [epoch %d][gs %d]' % (epoch, step))
                 snapshot(sess, saver, global_step)
 
-        snapshot(sess, saver, global_step)
         coord.request_stop() # 跑完了,请求停止
         coord.join(queue_runner) # 等待所有线程终止
 

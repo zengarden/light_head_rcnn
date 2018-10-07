@@ -221,7 +221,7 @@ def save_result_v2(all_results, save_path):
         if cls == '__background__':
             continue
         save_filename = os.path.join(
-            save_path, config.test_save_type + '_' + cls + '.txt')
+            save_path, 'light-head_' + config.test_save_type + '_' + cls + '.txt')
         save_file = open(save_filename, 'w')
 
         print('Writing {} ADAS results file {}'.format(cls, save_filename))
@@ -237,7 +237,7 @@ def save_result_v2(all_results, save_path):
 
         save_file.close()
 
-
+'''
 def save_result(all_results, save_path, model_name):
     prefix = ''
     if model_name is not None:
@@ -270,7 +270,7 @@ def save_result(all_results, save_path, model_name):
 
     save_file.close()
     return save_filename
-
+'''
 
 def make_parser():
     parser = argparse.ArgumentParser('test network')
