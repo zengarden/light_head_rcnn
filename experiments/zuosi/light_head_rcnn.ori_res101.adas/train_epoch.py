@@ -25,19 +25,22 @@ from tqdm import tqdm
 from utils.py_utils import QuickLogger, misc
 from utils.py_faster_rcnn_utils.timer import Timer
 
+import re
 import pdb 
 import warnings
 warnings.filterwarnings("ignore")
 
-def snapshot(sess, saver, epoch, step):
+def snapshot(sess, saver, epoch, iter, global_step):
     # 这是要一个epoch才保存一次的节奏啦
-    filename = 'epoch_{:d}'.format(epoch) + '.ckpt'
+    filename = 'epoch_{:d}_step_{:d}.ckpt'.format(epoch, iter)
     # e.g. output/zuosi/light_head_rcnn.ori_res101.coco
     if not os.path.exists(cfg.ckpt_dir):
         os.makedirs(cfg.ckpt_dir)
-    filename = os.path.join(cfg.ckpt_dir, filename)
-    saver.save(sess, filename, global_step=step)
-    print('Wrote snapshot to: {:s}'.format(filename))
+
+    filepath = os.path.join(cfg.ckpt_dir, filename)
+    saver.save(sess, filepath, global_step=global_step)
+
+    print('Wrote checkpoint: {}'.format(filename))
 
 
 def get_data_flow():
@@ -69,9 +72,8 @@ def train(args):
     # 意思是将简单的运算放在cpu上,只将神经网络的训练过程放在GPU上,不要误会!
     with tf.Graph().as_default(), tf.device('/cpu:0'):
         # 定义训练轮数
-        global_step = tf.get_variable(
-            'global_step', [], initializer=tf.constant_initializer(0.),
-            trainable=False)
+        #global_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0.), trainable=False)
+        global_step = tf.get_variable('global_step', [], dtype=tf.int64, initializer=tf.constant_initializer(0), trainable=False)
 
         # log_device_placement=True会打印出执行操作所使用的设备 
         tfconfig = tf.ConfigProto(
@@ -106,7 +108,9 @@ def train(args):
         coord = tf.train.Coordinator()
 
         # 这个用于初始化变量,但注意这句话并不会立即生效,要生效必需在session中运行中才行
-        init_all_var = tf.initialize_all_variables()
+        # init_all_var = tf.initialize_all_variables()
+        init_all_var = tf.global_variables_initializer()
+
         # 让上面的初始化生效
         sess.run(init_all_var)
 
@@ -189,14 +193,17 @@ def train(args):
 
         variables = tf.global_variables() # 获取程序中的变量,返回的是变量的一个列表
         var_keep_dic = get_variables_in_checkpoint_file(cfg.weight) # 从预训练文件中获取参数
-        var_keep_dic.pop('global_step')
+        var_keep_dic.pop('global_step') #把'global_step'弹出来
 
         sess.run(tf.global_variables_initializer())
         sess.run(tf.local_variables_initializer())
 
         sess.run(update_lr_op, {lr_placeholder: cfg.get_lr(0) * num_gpu})
+        # tf.variables_initializer(var_list, name='init')它的作用是返回一个初始化
+        # 一列变量的操作(op).下面的操作就是初始化variables列表中的变量。其实这里有点
+        # 奇怪,因为variables这个变量等于tf.global_variables(),所以tf.variables_initializer(variables)
+        # 就相当于tf.global_variables_initializer()
         sess.run(tf.variables_initializer(variables, name='init'))
-
         variables_to_restore = []
         for v in variables:
             # 为啥下面这样操作?因为v.name是变量名,e.g. v:0,v1:0
@@ -207,15 +214,18 @@ def train(args):
         # 从预训练文件中恢复参数,这里Saver(var_list=None,...)的第一个参数
         # var_list指定将要保存/恢复的变量,它可以传递dict或list
         restorer = tf.train.Saver(variables_to_restore) # 为毛不是直接tf.train.Saver()
-        
-        '''
-        没想清楚,先搁置
-        ckpt = tf.train.latest_checkpoint(cfg.ckpt_dir)
-        if ckpt is not None:
-            print("restore from checkpoint {}".format(ckpt))
-            restorer.restore(sess, ckpt)
-        '''
-        restorer.restore(sess, cfg.weight)
+
+        restore_from_ckpt = False 
+        if args.resume:
+            checkpoint = 'epoch_{:d}_step_{:d}.ckpt'.format(args.checkepoch, args.checkstep)
+            print('restore from ckpt: {}'.format(os.path.join(cfg.ckpt_dir, checkpoint)))
+            restorer.restore(sess, os.path.join(cfg.ckpt_dir, checkpoint))
+            start_epoch, start_step = args.checkepoch, args.checkstep
+            restore_from_ckpt = True
+        else:
+            print('restore from pretrained file: {}'.format(cfg.weight))
+            restorer.restore(sess, cfg.weight)
+            start_epoch = start_step = 0
 
         train_collection = net.get_train_collection()
         sess2run = []
@@ -229,6 +239,7 @@ def train(args):
         # warm up staging area
         inputs_names = net.get_inputs(mode=1)
         #logger.info("start warm up")
+        #为什么要跑4次?
         for _ in range(4):
             blobs_list = prefetch_data_layer.forward()
             feed_dict = {}
@@ -239,18 +250,20 @@ def train(args):
                     feed_dict[inputs[it_idx]] = blobs[it_inputs_name]
             sess.run([put_op_list], feed_dict=feed_dict)
 
-        print("##### start train #####")
-        for epoch in range(cfg.max_epoch):
-            if epoch == 0 and cfg.warm_iter > 0:
-                # pbar = tqdm(range(cfg.warm_iter)) # 预热默认是500次迭代
-                pbar = range(cfg.warm_iter) # 预热默认是500次迭代
+        print('##### start train #####')
+        iters_per_epoch = cfg.nr_image_per_epoch // (num_gpu * cfg.train_batch_per_gpu) + 1
+        for epoch in range(start_epoch, cfg.max_epoch):
+            if not restore_from_ckpt and cfg.warm_iter > 0:
+                '''为啥有[bottom_lr,up_lr]这个区间?这里的学习率调整更平滑,注意还有一个iter_delta_lr是
+                每一轮迭代的学习率调整步长.'''
                 up_lr = cfg.get_lr(0) * num_gpu
-                bottom_lr = up_lr * cfg.warm_fractor
+                bottom_lr = up_lr * cfg.warm_fractor # up_lr * (1.0/3.0)
                 iter_delta_lr = 1.0 * (up_lr - bottom_lr) / cfg.warm_iter
                 cur_lr = bottom_lr
-                for iter in pbar:
+                print('start warm up')
+                for iter in range(cfg.warm_iter):
                     sess.run(update_lr_op, {lr_placeholder: cur_lr})
-                    cur_lr += iter_delta_lr
+                    cur_lr += iter_delta_lr #每一轮迭代的学习率调整步长,高级
                     feed_dict = {}
                     blobs_list = prefetch_data_layer.forward()
                     for i, inputs in enumerate(inputs_list):
@@ -260,28 +273,30 @@ def train(args):
                             feed_dict[inputs[it_idx]] = blobs[it_inputs_name]
                     sess_ret = sess.run(sess2run, feed_dict=feed_dict)
 
-                    if iter % cfg.disp_interval == 0:
-                        print_str = 'iter %d, ' % (iter)
+                    if iter > 0 and iter % 100 == 0:
+                        print_str = 'epoch %d, iter %d/%d, ' % (epoch, iter, cfg.warm_iter)
+                        # train_collection.keys => ['rpn_loss _cls','rpn_loss_box','loss_cls','loss_box','tot_losses']
                         for idx_key, iter_key in enumerate(train_collection.keys()):
-                            print_str += iter_key + ': %.4f, ' % sess_ret[
-                                idx_key + 2]
+                            print_str += iter_key + ': %.4f, ' % sess_ret[idx_key + 2]
 
-                        print_str += 'lr: %.4f, speed: %.3fs/iter' % \
-                                     (cur_lr, timer.average_time)
+                        print_str += 'lr: %.4f, speed: %.3fs/iter' % (cur_lr, timer.average_time)
                         print(print_str)
-                        # pbar.set_description(print_str)
+                # update start_step
+                start_step = cfg.warm_iter + 1
 
             '''nr_image_per_epoch这个视数据集不同而不同,像coco2014这个数就是80k的样子,
             每个cpu装入train_batch_per_gpu张图片,总共num_gpu个gpu,以此来计算需要多
-            少次迭代, +1是因为range的原因'''
-            # pbar = tqdm(range(1, cfg.nr_image_per_epoch // (num_gpu * cfg.train_batch_per_gpu) + 1))
-            pbar = range(1, cfg.nr_image_per_epoch // (num_gpu * cfg.train_batch_per_gpu) + 1)
-            # 为了更新学习率,lr_placeholder是前面定义的一个占位符,通过这种方式在
-            # 运动中更新学习率,在不同的epoch阶段要适当调整学习率嘛,嘿嘿
+            少次迭代, +1是因为range的原因.为了更新学习率,lr_placeholder是前面定义的一个占位符,
+            通过这种方式在运动中更新学习率,在不同的epoch阶段要适当调整学习率嘛,嘿嘿'''
             cur_lr = cfg.get_lr(epoch) * num_gpu
             sess.run(update_lr_op, {lr_placeholder: cur_lr})
-            print("epoch: %d" % epoch)
-            for iter in pbar:
+
+            loss_temp = 0.0
+
+            if epoch > start_epoch:
+                start_step = 0
+
+            for iter in range(start_step, iters_per_epoch):
                 timer.tic()
                 feed_dict = {}
                 blobs_list = prefetch_data_layer.forward() # 数据是通过这个prefetch_data_layer来?
@@ -294,20 +309,24 @@ def train(args):
                 sess_ret = sess.run(sess2run, feed_dict=feed_dict)
                 timer.toc()
 
-                if iter % cfg.disp_interval == 0:
-                    print_str = 'iter %d, ' % (iter)
+                #因为'tot_losses'正好是最后一项,这里取巧才这么用,不规范
+                loss_temp += sess_ret[-1]
+                
+                gs = sess.run(global_step)
+                if gs % cfg.disp_interval == 0:
+                    print_str = 'epoch %d, iter %d/%d, ' % (epoch, iter, iters_per_epoch)
                     for idx_key, iter_key in enumerate(train_collection.keys()):
                         print_str += iter_key + ': %.4f, ' % sess_ret[idx_key + 2]
 
-                    print_str += 'lr: %.4f, speed: %.3fs/iter' % \
-                                 (cur_lr, timer.average_time)
+                    print_str += 'tot_losses_mean: %.4f, ' % (loss_temp/cfg.disp_interval)
+                    print_str += 'lr: %.4f, speed: %.3fs/iter' % (cur_lr, timer.average_time)
                     print(print_str)
-                    # pbar.set_description(print_str)
 
-                if iter % cfg.snapshot_interval == 0:
-                    snapshot(sess, saver, epoch, global_step)
+                    loss_temp = 0.0
+                if gs % cfg.snapshot_interval == 0:
+                    snapshot(sess, saver, epoch, iter, global_step)
 
-            snapshot(sess, saver, epoch, global_step)
+            snapshot(sess, saver, epoch, iter, global_step)
         coord.request_stop() # 跑完了,请求停止
         coord.join(queue_runner) # 等待所有线程终止
 
@@ -315,8 +334,16 @@ def train(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('test network')
     parser.add_argument(
+        '-r', '--resume', default=False, action='store_true', help='restore from checkpoint or not')
+    parser.add_argument(
         '-d', '--devices', default='0', type=str, help='device for training')
+    parser.add_argument(
+        '-e', '--checkepoch', dest='checkepoch', type=int, help='checkepoch to load model', default=0)
+    parser.add_argument(
+        '-s', '--checkstep', dest='checkstep', type=int, help='checkstep to load model', default=0)
+
     args = parser.parse_args()
+    
     args.devices = misc.parse_devices(args.devices)
     os.environ["CUDA_VISIBLE_DEVICES"] = args.devices
     setproctitle.setproctitle('train ' + cfg.this_model_dir)

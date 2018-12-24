@@ -1,0 +1,291 @@
+# encoding: utf-8
+"""
+@author: jemmy li
+@contact: zengarden2009@gmail.com
+"""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+from IPython import embed
+from config import cfg, config
+
+import argparse
+import dataset
+import os.path as osp
+import network_desp
+import tensorflow as tf
+import numpy as np
+import cv2, os, sys, math, json, pickle
+
+from tqdm import tqdm
+from utils.py_faster_rcnn_utils.cython_nms import nms, nms_new
+from utils.py_utils import misc
+
+from multiprocessing import Queue, Process
+from detection_opr.box_utils.box import DetBox
+from detection_opr.utils.bbox_transform import clip_boxes, bbox_transform_inv
+from functools import partial
+import pdb
+import warnings
+warnings.filterwarnings("ignore")
+
+def load_model(model_file, dev):
+    os.environ["CUDA_VISIBLE_DEVICES"] = dev
+    tfconfig = tf.ConfigProto(allow_soft_placement=True)
+    tfconfig.gpu_options.allow_growth = True
+    sess = tf.Session(config=tfconfig)
+    net = network_desp.Network()
+    inputs = net.get_inputs() #定义了由若干占位符组成的list
+    net.inference('TEST', inputs)
+    test_collect_dict = net.get_test_collection()
+    test_collect = [it for it in test_collect_dict.values()]
+    saver = tf.train.Saver()
+
+    saver.restore(sess, model_file)
+    return partial(sess.run, test_collect), inputs
+
+
+def inference(val_func, inputs, data_dict):
+    '''
+    Args
+        data_dict, {'data':img, boxes=gt_boxes, image_id=image_id, image_path=image_path}
+    '''
+    image = data_dict['data'] # 图像原数据
+    ori_shape = image.shape
+
+    if config.eval_resize == False:
+        resized_img, scale = image, 1
+    else:
+        resized_img, scale = dataset.resize_img_by_short_and_max_size(
+            image, config.eval_image_short_size, config.eval_image_max_size)
+    #缩放之后的高和宽
+    height, width = resized_img.shape[0:2]
+
+    resized_img = resized_img.astype(np.float32) - config.image_mean
+    resized_img = np.ascontiguousarray(resized_img[:, :, [2, 1, 0]])
+
+    im_info = np.array(
+        [[height, width, scale, ori_shape[0], ori_shape[1], 0]],
+        dtype=np.float32)
+
+    feed_dict = {inputs[0]: resized_img[None, :, :, :], inputs[1]: im_info}
+
+    #st = time.time()
+    _, scores, pred_boxes, rois = val_func(feed_dict=feed_dict)
+    #ed = time.time()
+    #print(ed -st)
+
+    boxes = rois[:, 1:5] / scale
+
+    if cfg.TEST.BBOX_REG:
+        pred_boxes = bbox_transform_inv(boxes, pred_boxes)
+        pred_boxes = clip_boxes(pred_boxes, ori_shape)
+
+    pred_boxes = pred_boxes.reshape(-1, config.num_classes, 4)
+    result_boxes = []
+    for j in range(1, config.num_classes):
+        inds = np.where(scores[:, j] > config.test_cls_threshold)[0]
+        cls_scores = scores[inds, j]
+        cls_bboxes = pred_boxes[inds, j, :]
+        cls_dets = np.hstack((cls_bboxes, cls_scores[:, np.newaxis])).astype(
+            np.float32, copy=False)
+
+        keep = nms(cls_dets, config.test_nms)
+        cls_dets = np.array(cls_dets[keep, :], dtype=np.float, copy=False)
+        for i in range(cls_dets.shape[0]):
+            db = cls_dets[i, :]
+            dbox = DetBox(
+                db[0], db[1], db[2] - db[0], db[3] - db[1],
+                tag=config.class_names[j], score=db[-1])
+            result_boxes.append(dbox)
+    #一幅图里面检出框数量不要超过这个数,这里将result_boxes里面的元素按score逆序排列,
+    #再取前config.test_max_boxes_per_image个元素
+    if len(result_boxes) > config.test_max_boxes_per_image:
+        result_boxes = sorted(
+            result_boxes, reverse=True, key=lambda t_res: t_res.score) \
+            [:config.test_max_boxes_per_image]
+
+
+    result_dict = data_dict.copy()
+    result_dict['result_boxes'] = result_boxes
+    return result_dict
+
+
+def worker(model_file, dev, records, read_func, result_queue):
+    func, inputs = load_model(model_file, dev)
+    for record in records:
+        data_dict = read_func(record)
+        result_dict = inference(func, inputs, data_dict)
+        result_queue.put_nowait(result_dict)
+
+
+def eval_all(args):
+    devs = args.devices.split(',')
+    misc.ensure_dir(config.eval_dir)
+
+    '''e.g. {
+        'record': files,
+        'nr_records': total_files,
+        'read_func': read_func,
+    }'''
+    dataset_dict = dataset.val_dataset()
+    records = dataset_dict['records']
+    nr_records = len(records)
+    read_func = dataset_dict['read_func'] # 数据处理
+
+    nr_devs = len(devs)
+    model_file = osp.join(
+        config.output_dir, 'model_dump',
+        'light-head.ckpt-{:d}'.format(args.step))
+  
+    #pbar = tqdm(total=nr_records)
+    all_results = []
+    if nr_devs == 1:
+        print('restore from ckpt %s' % model_file)
+        func, inputs = load_model(model_file, devs[0])
+        num_records = len(records)
+        for i in range(num_records):
+            record = records[i]
+            '''data_dict, e.g. {
+                'data': xx,
+                'boxes': xx,
+                'image_id': xx,
+                'image_path': xx,
+            }
+            '''
+            sys.stdout.write('im_detect: {:d}/{:d}\r'.format(i, num_records))
+            data_dict = read_func(record) # 返回一个包含测试文件信息的dict 
+            result_dict = inference(func, inputs, data_dict)
+            all_results.append(result_dict)
+            # result_dict包含gt和检出框
+            # result_dict['boxes'] --> gt
+            # result_dict['result_boxes'] --> 检出框
+            if args.show_image:
+                image = result_dict['data']
+                # 咦,这里是把检出框画上去,db是一个对象,概率信息包含在db里面
+                for db in result_dict['result_boxes']:
+                    if db.score > config.test_vis_threshold:
+                        # 见lib/detection_opr/box_utils/box.py
+                        db.draw(image)
+
+                # 咦,这里是把gt画上去
+                if 'boxes' in result_dict.keys():
+                    for db in result_dict['boxes']:
+                        db.draw(image)
+
+                fname = os.path.basename(data_dict['image_path'])
+                cv2.imwrite(os.path.join('eval', fname), image)
+                # cv2.imshow('image', image)
+                # cv2.waitKey(0)
+            # pbar.update(1)
+    else:
+        nr_image = math.ceil(nr_records / nr_devs)
+        result_queue = Queue(500)
+        procs = []
+        for i in range(nr_devs):
+            start = i * nr_image
+            end = min(start + nr_image, nr_records)
+            split_records = records[start:end]
+            proc = Process(target=worker, args=(
+                model_file, devs[i], split_records, read_func,
+                result_queue))
+            print('process:%d, start:%d, end:%d' % (i, start, end))
+            proc.start()
+            procs.append(proc)
+        for i in range(nr_records):
+            t = result_queue.get()
+            all_results.append(t)
+            #pbar.update(1)
+
+        for p in procs:
+            p.join()
+
+    save_result_v2(all_results, config.eval_dir)
+    print('Save result finished, start evaulation!')
+    if config.test_save_type == 'adas':
+        from datasets_odgt.adasval import adasval
+        adasval(cfg)
+    else:
+        print("not implement")
+        embed()
+
+
+def save_result_v2(all_results, save_path):
+    # light-head.adas
+    if config.test_save_type != 'adas':
+        raise Exception(
+            "Unimplemented save type: " + str(config.test_save_type))
+
+    for cls in config.class_names:
+        if cls == '__background__':
+            continue
+        save_filename = os.path.join(
+            save_path, 'light-head_' + config.test_save_type + '_' + cls + '.txt')
+        save_file = open(save_filename, 'w')
+
+        print('Writing {} ADAS results file {}'.format(cls, save_filename))
+        for result in all_results:
+            result_boxes = result['result_boxes']
+            #image_filename = result['image_id']
+            #image_id = int(image_filename.split('.')[0].split('_')[-1])
+            for rb in result_boxes:
+                if rb.tag == cls:
+                    record = '%s %.3f %.1f %.1f %.1f %.1f\n' % \
+                        (result['image_path'], rb.score, rb.x, rb.y, rb.x+rb.w, rb.y+rb.h)
+                    save_file.write(record)
+
+        save_file.close()
+
+'''
+def save_result(all_results, save_path, model_name):
+    prefix = ''
+    if model_name is not None:
+        prefix = os.path.basename(
+            os.path.basename(model_name).split('.')[0])
+
+    # light-head.adas
+    save_filename = os.path.join(
+        save_path, prefix + '.' + config.test_save_type)
+    save_file = open(save_filename, 'w')
+    adas_records = []
+    print('The result will save in file: ' + save_filename)
+    for result in tqdm(all_results):
+        result_boxes = result['result_boxes']
+        if config.test_save_type == 'adas':
+            image_filename = result['image_id']
+            image_id = int(image_filename.split('.')[0].split('_')[-1])
+            for rb in result_boxes:
+                record = {}
+                record['image_id'] = image_id
+                record['category_id'] = config.datadb.classes_originID[rb.tag]
+                record['score'] = rb.score
+                record['bbox'] = [rb.x, rb.y, rb.w, rb.h]
+                adas_records.append(record)
+        else:
+            raise Exception(
+                "Unimplemented save type: " + str(config.test_save_type))
+    if config.test_save_type == 'adas':
+        save_file.write(json.dumps(adas_records))
+
+    save_file.close()
+    return save_filename
+'''
+
+def make_parser():
+    parser = argparse.ArgumentParser('test network')
+    parser.add_argument(
+        '-d', dest='devices', default='0', type=str, help='device for testing')
+    parser.add_argument(
+        '--show_image', dest='show_image', default=False, action='store_true')
+    parser.add_argument(
+        '--step', dest='step', default=1500, type=int) 
+
+    return parser
+
+
+if __name__ == '__main__':
+    parser = make_parser()
+    args = parser.parse_args()
+    args.devices = misc.parse_devices(args.devices)
+    eval_all(args)

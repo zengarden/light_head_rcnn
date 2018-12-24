@@ -49,7 +49,7 @@ def global_context_module(bottom, prefix='', ks=15, chl_mid=256, chl_out=1024):
         trainable=True, activation_fn=None,
         weights_initializer=initializer, scope=prefix + '_conv%d_h' % ks)
 
-    s = row + col
+    s = row + col # 元素相加?
     return s
 
 def row_column_max_pooling(bottom, prefix='', window=(7, 7)):

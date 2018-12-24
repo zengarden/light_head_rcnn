@@ -35,6 +35,8 @@ class Config:
         root_dir, 'output', user,
         os.path.split(os.path.split(os.path.realpath(__file__))[0])[1]) 
     this_model_dir = osp.split(os.path.realpath(__file__))[0]
+
+    ckpt_dir = osp.join(output_dir, 'model_dump')
     eval_dir = osp.join(output_dir, 'eval_dump')
     tb_dir = osp.join(output_dir, 'tfboard_dump')
     weight = osp.join(root_dir, 'data/imagenet_weights/res101.ckpt')
@@ -44,8 +46,9 @@ class Config:
 
     # ------------------- Data configuration --------------------------------------#
 
-    from datasets_odgt.coco import COCO as datadb
+    from datasets_odgt.adas import ADAS as datadb
 
+    # 什么意思?
     image_mean = np.array([102.9801, 115.9465, 122.7717])
     # C.image_mean = np.array([122.7717, 102.9801, 115.9465])
     seed_dataprovider = 3
@@ -58,30 +61,46 @@ class Config:
     class_names2id = dict(list(zip(class_names, list(range(num_classes)))))
 
     batch_image_preprocess = 'pad'
-    train_root_folder = os.path.join(root_dir, 'data/MSCOCO')
+    train_root_folder = os.path.join(root_dir, 'data/ADAS')
     train_source = os.path.join(
-        root_dir, 'data', 'MSCOCO/odformat/coco_trainvalmini.odgt')
+        root_dir, 'data', 'ADAS/odformat/train2017.odgt')
 
-    eval_root_folder = os.path.join(root_dir, 'data/MSCOCO')
+    eval_root_folder = os.path.join(root_dir, 'data/ADAS')
     eval_source = os.path.join(
-        root_dir, 'data', 'MSCOCO/odformat/coco_minival2014.odgt')
+        root_dir, 'data', 'ADAS/odformat/val2017.odgt')
     eval_json = os.path.join(
-        root_dir, 'data', 'MSCOCO/instances_minival2014.json')
+        root_dir, 'data', 'ADAS/instances_val2017.json')
 
     filter_gt_ignore_label = True
     train_gt_ignore_label = False
 
+    '''
     image_short_size = 800
     image_max_size = 1333
+    '''
+
+    image_short_size = 600 
+    image_max_size = 1000
+
+    '''
+    image_short_size = 224
+    image_max_size = 373
+    '''
     eval_resize = True
-    eval_image_short_size = 800
-    eval_image_max_size = 1333
+
+    eval_image_short_size = 600
+    eval_image_max_size = 1000
+
+    #eval_image_short_size = 800
+    #eval_image_max_size = 1333
+    #eval_image_short_size = 224
+    #eval_image_max_size = 224
 
     test_max_boxes_per_image = 100
     test_cls_threshold = 0.00
     test_vis_threshold = 0.5
     test_nms = 0.3
-    test_save_type = 'coco'
+    test_save_type = 'adas'
 
     batch_filter_box_size = 0
     max_boxes_of_image = 100
@@ -97,30 +116,34 @@ class Config:
     EPS = 1e-14
 
     # ------------------------------------ TRAIN config -----------------------#
-    train_batch_per_gpu = 2 # 每个gpu每个batch的图片数量
+    train_batch_per_gpu = 1 # 默认是2,考虑到内存消耗改为1
     test_batch_per_gpu = 1
     bn_training = False
     tb_dump_interval = 500
     nr_image_per_epoch = 80000  # detectron 1x setting
     # 为啥设置个这么奇怪的初始学习率?按照train_batch_per_gpu为2算的话
     # basic_lr大概就是0.001的样子
-    basic_lr = 5e-4 * train_batch_per_gpu * 1.25
+    basic_lr = 5e-4 * train_batch_per_gpu * 1.25 # 5*0.0001*2*1.25=0.00125
     momentum = 0.9
     weight_decay = 0.0001
 
     from utils.tf_utils import lr_policy
     max_epoch = 30
-    warm_iter = 500 #前500次迭代是预热
+    warm_iter = 500 #预热,默认500次
     warm_fractor = 1.0 / 3.0
+    '''
     multi_stage_lr_policy = lr_policy.MultiStageLR(
         [[19, basic_lr], [25, basic_lr * 0.1], [30, basic_lr * 0.01]])
+    '''
+    multi_stage_lr_policy = lr_policy.MultiStageLR(
+        [[5, basic_lr], [10, basic_lr * 0.1], [15, basic_lr * 0.01]])
 
     def get_lr(self, epoch):
         return self.multi_stage_lr_policy.get_lr(epoch)
 
     # add by zuosi
-    disp_interval = 100 #控制显示步长
-    snapshot_interval = 1000 # 快照步长
+    disp_interval = 1000 #控制显示步长
+    snapshot_interval = 2000 #快照步长
     # -----------------------------traditional rcnn config --------------------#
     TRAIN = edict()
 
@@ -138,6 +161,7 @@ class Config:
     TRAIN.BBOX_REG = True
     TRAIN.BBOX_THRESH = 0.5
 
+    # 什么意思?为啥是-1?
     TRAIN.BATCH_SIZE = -1  # rcnn batch size
     TRAIN.nr_ohem_sampling = 256 * train_batch_per_gpu
 
@@ -161,15 +185,17 @@ class Config:
     TRAIN.RPN_NMS_THRESH = 0.7
     # __C.TRAIN.RPN_MIN_SIZE = 16
     TRAIN.USE_ALL_GT = True
-    TRAIN.RPN_PRE_NMS_TOP_N = 12000
-    TRAIN.RPN_POST_NMS_TOP_N = 2000
+    TRAIN.RPN_PRE_NMS_TOP_N = 12000 # 图片小的时候这个有点多,why?
+    #TRAIN.RPN_PRE_NMS_TOP_N = 3000 # 如果训练的时候将图片resize到这个尺寸,要调整NMS前roi的数量
+    TRAIN.RPN_POST_NMS_TOP_N = 2000 # nms之后保留的roi,将用于训练
 
     TEST = edict()
     TEST.BBOX_REG = True
     TEST.HAS_RPN = True
     TEST.RPN_NMS_THRESH = 0.7
-    TEST.RPN_PRE_NMS_TOP_N = 6000
-    TEST.RPN_POST_NMS_TOP_N = 1000
+    # TEST.RPN_PRE_NMS_TOP_N = 6000
+    TEST.RPN_PRE_NMS_TOP_N = 1000 # 224测试集小点吧
+    TEST.RPN_POST_NMS_TOP_N = 300 # nms之后保留的roi,将用于测试
 
 
 config = Config()

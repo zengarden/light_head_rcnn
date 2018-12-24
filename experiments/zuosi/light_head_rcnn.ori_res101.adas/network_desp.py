@@ -66,9 +66,8 @@ class Network(object):
         """
         if mode == 0:
             inputs = []
-            # 分别用来存啥的?
             inputs.append(tf.placeholder(tf.float32, shape=[None, None, None, 3]))
-            inputs.append(tf.placeholder(tf.float32, shape=[None, 6]))
+            inputs.append(tf.placeholder(tf.float32, shape=[None, 6])) # 存什么的?
             inputs.append(tf.placeholder(tf.float32, shape=[None, None, 5]))
             return inputs
         elif mode == 1:
@@ -188,6 +187,9 @@ class Network(object):
                 regularizer=tf.contrib.layers.l2_regularizer(
                     cfg.weight_decay)):
 
+            # 新加的卷积层,在论文中称之为"large separable convolution",
+            # 输入是conv5生成的feature map,通道数为2048,它有序的执行一个k x 1和1 x k卷积,
+            # 输出为10 x p x p(这里p=7), k等于256
             ps_chl = 7 * 7 * 10
             ps_fm = rfcn_plus_plus_opr.global_context_module(
                 net_conv5, prefix='conv_new_1',
@@ -277,16 +279,20 @@ class Network(object):
             loss_box *= 2
 
             #--------------------add to colloection ------------------------#
+            # tensorflow的collection提供了一个全局的存储机制,不会受到变量名
+            # 生存空间的影响,一处保存,到处可用
             tf.add_to_collection('loss_cls', cross_entropy)
             tf.add_to_collection('loss_box', loss_box)
             tf.add_to_collection('rpn_loss_cls', rpn_cross_entropy)
             tf.add_to_collection('rpn_loss_box', rpn_loss_box)
+            # 类别损失 + 边框回归损失
             loss = cross_entropy + loss_box + rpn_cross_entropy + rpn_loss_box
             tf.add_to_collection('losses', loss)
             return loss
 
     def get_train_collection(self):
         ret = dict()
+        # tf.add_n实现一个列表中的元素相加??
         ret['rpn_loss_cls'] = tf.add_n(tf.get_collection('rpn_loss_cls'))
         ret['rpn_loss_box'] = tf.add_n(tf.get_collection('rpn_loss_box'))
         ret['loss_cls'] = tf.add_n(tf.get_collection('loss_cls'))
